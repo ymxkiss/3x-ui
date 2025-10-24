@@ -25,7 +25,7 @@ As an enhanced fork of the original X-UI project, 3X-UI provides improved stabil
 ## Quick Start
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ymxkiss/3x-ui/master/install.sh)
 ```
 docker
 ```
@@ -36,7 +36,7 @@ docker run -itd \
    --network=host \
    --restart=unless-stopped \
    --name 3x-ui \
-   ghcr.io/mhsanaei/3x-ui:latest
+   ghcr.io/ymxkiss/3x-ui:latest
 ```
 For full documentation, please visit the [project Wiki](https://github.com/MHSanaei/3x-ui/wiki).
 
