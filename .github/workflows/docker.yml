@@ -1,62 +1,81 @@
-name: Release 3X-UI for Docker
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow
+name: Build Docker Image
 
-permissions:
-  contents: read
-  packages: write
-
+# 当 push 到 main 分支，或者创建以 v 开头的 tag 时触发，可根据需求修改
 on:
-  workflow_dispatch:
   push:
     tags:
       - v*
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ymxkiss/3x-ui # prinsss/ga-hit-counter
+
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
 
+    # 这里用于定义 GITHUB_TOKEN 的权限
+    permissions:
+      packages: write
+      contents: read
+
     steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
+      - name: Checkout
+        uses: actions/checkout@v2
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
+      # 缓存 Docker 镜像以加速构建
+      - name: Cache Docker layers
+        uses: actions/cache@v2
         with:
-          images: |
-            hsanaeii/3x-ui
-            ghcr.io/ymxkiss/3x-ui
-          tags: |
-            type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-buildx-
 
+      # 配置 QEMU 和 buildx 用于多架构镜像的构建
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          install: true
+        id: buildx
+        uses: docker/setup-buildx-action@v1
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - name: Inspect builder
+        run: |
+          echo "Name:      ${{ steps.buildx.outputs.name }}"
+          echo "Endpoint:  ${{ steps.buildx.outputs.endpoint }}"
+          echo "Status:    ${{ steps.buildx.outputs.status }}"
+          echo "Flags:     ${{ steps.buildx.outputs.flags }}"
+          echo "Platforms: ${{ steps.buildx.outputs.platforms }}"
+      # 登录到 GitHub Packages 容器仓库
+      # 注意 secrets.GITHUB_TOKEN 不需要手动添加，直接就可以用
+      - name: Log in to the Container registry
+        uses: docker/login-action@v1
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+      # 根据输入自动生成 tag 和 label 等数据，说明见下
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+
+      # 构建并上传
+      - name: Build and push
+        uses: docker/build-push-action@v2
         with:
           context: .
+          file: ./Dockerfile
+          builder: ${{ steps.buildx.outputs.name }}
+          platforms: linux/amd64,linux/arm64
           push: true
-          platforms: linux/amd64,linux/arm64/v8,linux/arm/v7,linux/arm/v6,linux/386
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+
+      - name: Inspect image
+        run: docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
